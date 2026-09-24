@@ -43,7 +43,7 @@ jobs:
 
       - name: Generate Prisma Client & Push DB
         env:
-          DATABASE_URL: DATABASE_URL
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: |
           pnpm run db:generate
           pnpm run db:push
