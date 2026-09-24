@@ -16,7 +16,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: chatbots_ai
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
@@ -43,7 +43,7 @@ jobs:
 
       - name: Generate Prisma Client & Push DB
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatbots_ai
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: |
           pnpm run db:generate
           pnpm run db:push
