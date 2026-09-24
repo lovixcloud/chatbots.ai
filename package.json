@@ -1,0 +1,39 @@
+{
+  "name": "chatbots-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "scripts": {
+    "dev": "concurrently \"pnpm run dev:api\" \"pnpm run dev:web\" \"pnpm run dev:widget\"",
+    "dev:api": "pnpm --filter @chatbots-ai/api dev",
+    "dev:web": "pnpm --filter @chatbots-ai/web dev",
+    "dev:widget": "pnpm --filter @chatbots-ai/widget dev",
+    "build": "pnpm --filter @chatbots-ai/shared build && pnpm db:generate && pnpm --filter @chatbots-ai/api build && pnpm --filter @chatbots-ai/web build && pnpm --filter @chatbots-ai/widget build",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.13.4",
+    "concurrently": "^9.1.2",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "dependencies": {
+    "@prisma/client": "6.3.1",
+    "bcryptjs": "^2.4.3"
+  }
+}
