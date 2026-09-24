@@ -39,21 +39,21 @@ jobs:
         run: pnpm install
 
       - name: Build shared package
-        run: pnpm build:shared
+        run: pnpm run build:shared
 
       - name: Generate Prisma Client & Push DB
         env:
           DATABASE_URL: DATABASE_URL
         run: |
-          pnpm db:generate
-          pnpm db:push
-          pnpm db:seed
+          pnpm run db:generate
+          pnpm run db:push
+          pnpm run db:seed
 
       - name: Run Unit Tests
-        run: pnpm test
+        run: pnpm run test
 
       - name: Typecheck and Build Web App & API
         run: |
-          pnpm build:api
-          pnpm build:web
-          pnpm build:widget
+          pnpm run build:api
+          pnpm run build:web
+          pnpm run build:widget
