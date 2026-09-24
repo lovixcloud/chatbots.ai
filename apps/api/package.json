@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@chatbots-ai/shared": "workspace:*",
-    "@prisma/client": "^6.3.1",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
