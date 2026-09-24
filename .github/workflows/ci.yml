@@ -15,7 +15,7 @@ jobs:
         image: supabase/postgres:17.6.1.173
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASS }}
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
