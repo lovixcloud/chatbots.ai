@@ -2,58 +2,108 @@ name: chatbots.ai CI Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    # CI-only database connection.
+    # This connects Prisma to the PostgreSQL service container.
+    env:
+      DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres?schema=public
+
     services:
       postgres:
-        image: postgres:17-alpine
+        image: supabase/postgres:17.6.1.173
+
         env:
-          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
+
+        command: >-
+          postgres
+          -c config_file=/etc/postgresql/postgresql.conf
+
         ports:
           - 5432:5432
+
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U postgres -d postgres -h localhost"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-start-period 10s
+          --health-retries 20
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify DATABASE_URL
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is empty."
+            exit 1
+          fi
+
+          echo "DATABASE_URL is configured for CI."
+
+      - name: Verify PostgreSQL
+        run: |
+          pg_isready \
+            -h localhost \
+            -p 5432 \
+            -U postgres \
+            -d postgres
 
       - name: Build shared package
         run: pnpm run build:shared
 
-      - name: Generate Prisma Client & Push DB
+      - name: Generate Prisma Client
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          pnpm run db:generate
-          pnpm run db:push
-          pnpm run db:seed
+          DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres?schema=public
+        run: pnpm run db:generate
 
-      - name: Run Unit Tests
+      - name: Push database schema
+        env:
+          DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres?schema=public
+        run: pnpm run db:push
+
+      - name: Seed database
+        env:
+          DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres?schema=public
+        run: pnpm run db:seed
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres?schema=public
         run: pnpm run test
 
-      - name: Typecheck and Build Web App & API
-        run: |
-          pnpm run build:api
-          pnpm run build:web
-          pnpm run build:widget
+      - name: Build API
+        run: pnpm run build:api
+
+      - name: Build Web App
+        run: pnpm run build:web
+
+      - name: Build Widget
+        run: pnpm run build:widget
