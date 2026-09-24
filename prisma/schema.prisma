@@ -1,0 +1,715 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleType {
+  OWNER
+  ADMINISTRATOR
+  MANAGER
+  AGENT
+  VIEWER
+  CUSTOM
+}
+
+enum BotStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum ConversationStatus {
+  NEW
+  OPEN
+  WAITING
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ArticleVisibility {
+  PUBLIC
+  CHATBOT_ONLY
+  AGENT_ONLY
+}
+
+enum MatchType {
+  EXACT_PHRASE
+  EXACT_KEYWORD
+  PARTIAL_KEYWORD
+  MULTIPLE_KEYWORDS
+  INTENT_CATEGORY
+}
+
+enum WorkflowNodeType {
+  MESSAGE
+  QUESTION
+  MULTIPLE_CHOICE
+  COLLECT_TEXT
+  COLLECT_EMAIL
+  COLLECT_PHONE
+  COLLECT_ORDER_ID
+  SEARCH_DATABASE
+  SEARCH_FAQ
+  CONDITIONAL_BRANCH
+  DELAY
+  ASSIGN_AGENT
+  CREATE_TICKET
+  UPDATE_CUSTOMER
+  END
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String
+  name             String
+  avatar           String?
+  jobTitle         String?
+  isSuperAdmin     Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+  assignedTickets  SupportTicket[]
+  messagesSent     Message[]         @relation("UserMessages")
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id               String            @id @default(uuid())
+  name             String
+  slug             String            @unique
+  logo             String?
+  description      String?
+  industry         String?
+  websiteUrl       String?
+  contactEmail     String?
+  contactPhone     String?
+  address          String?
+  businessHours    Json?            // e.g. { "mon": {"open": "09:00", "close": "17:00"} }
+  timezone         String            @default("UTC")
+  currency         String            @default("USD")
+  locale           String            @default("en-US")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  members          WorkspaceMember[]
+  roles            Role[]
+  bots             Bot[]
+  faqs             FAQ[]
+  articles         KnowledgeArticle[]
+  categories       Category[]
+  tags             Tag[]
+  products         Product[]
+  services         Service[]
+  orders           Order[]
+  customers        Customer[]
+  collections      CustomCollection[]
+  conversations    Conversation[]
+  tickets          SupportTicket[]
+  analyticsEvents  AnalyticsEvent[]
+  apiKeys          ApiKey[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  roleId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id])
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  roleType    RoleType @default(CUSTOM)
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions Permission[]
+  members     WorkspaceMember[]
+
+  @@unique([workspaceId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  roleId    String
+  action    String   // e.g., "bots:read", "bots:write", "conversations:manage"
+  resource  String   // e.g., "bots", "faqs", "customers", "settings"
+  createdAt DateTime @default(now())
+
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, resource, action])
+  @@map("permissions")
+}
+
+model Bot {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  name                String
+  identifier          String   @unique
+  description         String?
+  status              BotStatus @default(DRAFT)
+  welcomeMessage      String   @default("Hello! How can I help you today?")
+  fallbackResponse    String   @default("I'm sorry, I couldn't find an exact answer. Would you like to check our FAQs or speak with a support representative?")
+  offlineResponse     String   @default("We are currently offline. Please leave your details and message, and we'll reply as soon as possible.")
+  language            String   @default("en")
+  tone                String   @default("professional")
+  businessHoursOnly   Boolean  @default(false)
+  humanHandoffEnabled Boolean  @default(true)
+  handoffKeywords     String[] @default(["agent", "human", "representative", "support team"])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  theme           BotTheme?
+  widgetConfig    WidgetConfiguration?
+  rules           BotRule[]
+  workflows       Workflow[]
+  conversations   Conversation[]
+  analyticsEvents AnalyticsEvent[]
+
+  @@map("bots")
+}
+
+model BotTheme {
+  id              String   @id @default(uuid())
+  botId           String   @unique
+  primaryColor    String   @default("#2563eb")
+  secondaryColor  String   @default("#1e40af")
+  backgroundColor String   @default("#ffffff")
+  textColor       String   @default("#0f172a")
+  fontFamily      String   @default("Inter, sans-serif")
+  borderRadius    Int      @default(12)
+  avatarUrl       String?
+  launcherIcon    String   @default("message-square")
+  position        String   @default("bottom-right") // bottom-right, bottom-left
+  width           Int      @default(380)
+  height          Int      @default(600)
+  fontSize        Int      @default(14)
+  headerTitle     String   @default("Customer Support")
+  customCss       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@map("bot_themes")
+}
+
+model WidgetConfiguration {
+  id              String   @id @default(uuid())
+  botId           String   @unique
+  allowedDomains  String[] @default(["*"])
+  quickReplies    Json     @default("[]") // Array of { label: string, payload: string, action: string }
+  showAgentAvatar Boolean  @default(true)
+  soundNotifications Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@map("widget_configurations")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  slug        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  faqs      FAQ[]
+  articles  KnowledgeArticle[]
+
+  @@unique([workspaceId, slug])
+  @@map("categories")
+}
+
+model Tag {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  faqs      FAQ[]               @relation("FAQToTag")
+  articles  KnowledgeArticle[]  @relation("ArticleToTag")
+  customers Customer[]          @relation("CustomerToTag")
+
+  @@unique([workspaceId, name])
+  @@map("tags")
+}
+
+model FAQ {
+  id          String            @id @default(uuid())
+  workspaceId String
+  categoryId  String?
+  question    String
+  answer      String
+  summary     String?
+  visibility  ArticleVisibility @default(PUBLIC)
+  priority    Int               @default(0)
+  isPublished Boolean           @default(true)
+  viewCount   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags      Tag[]     @relation("FAQToTag")
+
+  @@map("faqs")
+}
+
+model KnowledgeArticle {
+  id          String            @id @default(uuid())
+  workspaceId String
+  categoryId  String?
+  title       String
+  slug        String
+  content     String
+  summary     String?
+  status      ArticleStatus     @default(PUBLISHED)
+  visibility  ArticleVisibility @default(PUBLIC)
+  priority    Int               @default(0)
+  viewCount   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags      Tag[]     @relation("ArticleToTag")
+
+  @@unique([workspaceId, slug])
+  @@map("knowledge_articles")
+}
+
+model BotRule {
+  id          String    @id @default(uuid())
+  botId       String
+  name        String
+  category    String?   // e.g., "pricing", "returns", "greeting"
+  matchType   MatchType @default(EXACT_KEYWORD)
+  triggers    String[]  // array of keywords/phrases
+  priority    Int       @default(0)
+  isActive    Boolean   @default(true)
+  response    String    // Plain text or Markdown structured response
+  quickReplies Json?    // Optional quick reply buttons
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  bot        Bot             @relation(fields: [botId], references: [id], onDelete: Cascade)
+  conditions RuleCondition[]
+  actions    RuleAction[]
+
+  @@map("bot_rules")
+}
+
+model RuleCondition {
+  id         String   @id @default(uuid())
+  ruleId     String
+  field      String   // e.g. "hasOrder", "customerEmail", "conversationVar"
+  operator   String   // e.g. "EQUALS", "CONTAINS", "EXISTS", "NOT_EMPTY"
+  value      String?
+  createdAt  DateTime @default(now())
+
+  rule       BotRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@map("rule_conditions")
+}
+
+model RuleAction {
+  id         String   @id @default(uuid())
+  ruleId     String
+  actionType String   // e.g., "FETCH_ORDER", "FETCH_PRODUCT", "FETCH_FAQ", "SET_VARIABLE", "HANDOFF"
+  targetKey  String?  // e.g., "orders", "products", "orderNumber"
+  value      String?
+  createdAt  DateTime @default(now())
+
+  rule       BotRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@map("rule_actions")
+}
+
+model Workflow {
+  id          String   @id @default(uuid())
+  botId       String
+  name        String
+  trigger     String   // Keyword or Intent that starts this workflow
+  description String?
+  isActive    Boolean  @default(true)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bot        Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
+  nodes      WorkflowNode[]
+  edges      WorkflowEdge[]
+
+  @@map("workflows")
+}
+
+model WorkflowNode {
+  id           String           @id @default(uuid())
+  workflowId   String
+  nodeType     WorkflowNodeType
+  label        String
+  content      String?          // Question text, message content, or variable prompt
+  variableName String?          // e.g., "orderNumber", "userEmail"
+  options      Json?            // For multiple choice e.g. ["Track Order", "Cancel Order"]
+  config       Json?            // Extra properties (e.g. database target collection)
+  positionX    Float            @default(0)
+  positionY    Float            @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  workflow     Workflow         @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  outgoing     WorkflowEdge[]   @relation("SourceNode")
+  incoming     WorkflowEdge[]   @relation("TargetNode")
+
+  @@map("workflow_nodes")
+}
+
+model WorkflowEdge {
+  id           String       @id @default(uuid())
+  workflowId   String
+  sourceNodeId String
+  targetNodeId String
+  condition    String?      // Optional label/condition like option selected "Track Order"
+  createdAt    DateTime     @default(now())
+
+  workflow     Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceNode   WorkflowNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode   WorkflowNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_edges")
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String?
+  email         String?
+  phone         String?
+  company       String?
+  avatar        String?
+  notes         String?
+  firstContactAt DateTime @default(now())
+  lastContactAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tags          Tag[]                  @relation("CustomerToTag")
+  metadata      CustomerMetadata[]
+  conversations Conversation[]
+  orders        Order[]
+
+  @@unique([workspaceId, email])
+  @@map("customers")
+}
+
+model CustomerMetadata {
+  id         String   @id @default(uuid())
+  customerId String
+  key        String
+  value      String
+  createdAt  DateTime @default(now())
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, key])
+  @@map("customer_metadata")
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  sku           String?
+  name          String
+  description   String
+  price         Float
+  currency      String   @default("USD")
+  inStock       Boolean  @default(true)
+  stockQuantity Int      @default(100)
+  category      String?
+  specifications Json?
+  supportInfo   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("products")
+}
+
+model Service {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  name         String
+  description  String
+  price        Float
+  currency     String   @default("USD")
+  duration     String?  // e.g., "1 hour", "Monthly subscription"
+  availability String?  // e.g., "Mon-Fri 9am-5pm"
+  requirements String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("services")
+}
+
+model Order {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  customerId     String?
+  orderNumber    String
+  status         String   // Processing, Shipped, Delivered, Returned, Cancelled
+  totalAmount    Float
+  currency       String   @default("USD")
+  items          Json     // List of items
+  trackingNumber String?
+  carrier        String?
+  deliveryStatus String?  // In Transit, Out for Delivery, Delivered
+  estimatedDelivery DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, orderNumber])
+  @@map("orders")
+}
+
+model CustomCollection {
+  id          String        @id @default(uuid())
+  workspaceId String
+  name        String        // e.g. "Branches", "Courses"
+  slug        String
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fields      CustomField[]
+  records     CustomRecord[]
+
+  @@unique([workspaceId, slug])
+  @@map("custom_collections")
+}
+
+model CustomField {
+  id           String           @id @default(uuid())
+  collectionId String
+  name         String
+  key          String
+  fieldType    String           // TEXT, NUMBER, BOOLEAN, DATE, JSON
+  isRequired   Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+
+  collection   CustomCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, key])
+  @@map("custom_fields")
+}
+
+model CustomRecord {
+  id           String           @id @default(uuid())
+  collectionId String
+  data         Json             // Key-value object for defined custom fields
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  collection   CustomCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@map("custom_records")
+}
+
+model Conversation {
+  id              String             @id @default(uuid())
+  workspaceId     String
+  botId           String
+  customerId      String?
+  sessionId       String             @unique
+  status          ConversationStatus @default(NEW)
+  channel         String             @default("widget") // widget, web, api
+  subject         String?
+  rating          Int?
+  feedback        String?
+  startedAt       DateTime           @default(now())
+  endedAt         DateTime?
+  lastMessageAt   DateTime           @default(now())
+  assignedAgentId String?            // User ID
+  activeWorkflowId String?
+  currentWorkflowNodeId String?
+  isUnresolvedQuestion Boolean       @default(false)
+  unresolvedText  String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bot             Bot                    @relation(fields: [botId], references: [id], onDelete: Cascade)
+  customer        Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  messages        Message[]
+  variables       ConversationVariable[]
+  tickets         SupportTicket[]
+  analyticsEvents AnalyticsEvent[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderType     String   // "CUSTOMER", "BOT", "AGENT", "SYSTEM"
+  senderUserId   String?  // If sent by agent
+  content        String
+  quickReplies   Json?    // Optional quick reply buttons rendered with message
+  metadata       Json?    // Extra context, matched rules, debug info
+  isInternalNote Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser     User?        @relation("UserMessages", fields: [senderUserId], references: [id], onDelete: SetNull)
+
+  @@map("messages")
+}
+
+model ConversationVariable {
+  id             String   @id @default(uuid())
+  conversationId String
+  key            String
+  value          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, key])
+  @@map("conversation_variables")
+}
+
+model SupportTicket {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  conversationId String?
+  assignedUserId String?
+  ticketNumber   String   @unique
+  subject        String
+  priority       String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  status         String   @default("OPEN")   // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  assignedUser   User?         @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@map("support_tickets")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String?
+  title       String
+  message     String
+  type        String   // HANDOFF_REQUEST, NEW_CONVERSATION, UNRESOLVED_QUESTION, SYSTEM
+  isRead      Boolean  @default(false)
+  link        String?
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AnalyticsEvent {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  botId          String?
+  conversationId String?
+  eventType      String   // MESSAGE_SENT, RULE_MATCHED, HANDOFF_TRIGGERED, FAQ_VIEWED, UNRESOLVED_QUERY
+  metricName     String?
+  value          Float    @default(1.0)
+  metadata       Json?
+  timestamp      DateTime @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bot          Bot?          @relation(fields: [botId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@map("analytics_events")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  key         String   @unique
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String?
+  action      String   // e.g. "CREATE_BOT", "DELETE_FAQ", "PUBLISH_WORKFLOW"
+  resource    String
+  resourceId  String?
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
